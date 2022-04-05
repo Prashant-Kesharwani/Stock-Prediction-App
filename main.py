@@ -1,66 +1,49 @@
-#pip install streamlit fbprophet yfinance plotly
-
 import streamlit as st
-from datetime import date
+import numpy as np
 
-import yfinance as yf
-from fbprophet import Prophet
-from fbprophet.plot import plot_plotly
-from plotly import graph_objs as go
+# Interactive Streamlit elements, like these sliders, return their value.
+# This gives you an extremely simple interaction model.
+iterations = st.sidebar.slider("Level of detail", 2, 20, 10, 1)
+separation = st.sidebar.slider("Separation", 0.7, 2.0, 0.7885)
 
-START = "2015-01-01"
-TODAY = date.today().strftime("%Y-%m-%d")
+# Non-interactive elements return a placeholder to their location
+# in the app. Here we're storing progress_bar to update it later.
+progress_bar = st.sidebar.progress(0)
 
-st.title('Stock Forecast App')
+# These two elements will be filled in later, so we create a placeholder
+# for them using st.empty()
+frame_text = st.sidebar.empty()
+image = st.empty()
 
-stocks = ('GOOG', 'AAPL', 'MSFT', 'GME')
-selected_stock = st.selectbox('Select dataset for prediction', stocks)
+m, n, s = 960, 640, 400
+x = np.linspace(-m / s, m / s, num=m).reshape((1, m))
+y = np.linspace(-n / s, n / s, num=n).reshape((n, 1))
 
-n_years = st.slider('Years of prediction:', 1, 4)
-period = n_years * 365
+for frame_num, a in enumerate(np.linspace(0.0, 4 * np.pi, 100)):
+    # Here were setting value for these two elements.
+    progress_bar.progress(frame_num)
+    frame_text.text("Frame %i/100" % (frame_num + 1))
 
+    # Performing some fractal wizardry.
+    c = separation * np.exp(1j * a)
+    Z = np.tile(x, (n, 1)) + 1j * np.tile(y, (1, m))
+    C = np.full((n, m), c)
+    M: Any = np.full((n, m), True, dtype=bool)
+    N = np.zeros((n, m))
 
-@st.cache
-def load_data(ticker):
-    data = yf.download(ticker, START, TODAY)
-    data.reset_index(inplace=True)
-    return data
+    for i in range(iterations):
+        Z[M] = Z[M] * Z[M] + C[M]
+        M[np.abs(Z) > 2] = False
+        N[M] = i
 
-	
-data_load_state = st.text('Loading data...')
-data = load_data(selected_stock)
-data_load_state.text('Loading data... done!')
+    # Update the image placeholder by calling the image() function on it.
+    image.image(1.0 - (N / N.max()), use_column_width=True)
 
-st.subheader('Raw data')
-st.write(data.tail())
+# We clear elements by calling empty on them.
+progress_bar.empty()
+frame_text.empty()
 
-# Plot raw data
-def plot_raw_data():
-	fig = go.Figure()
-	fig.add_trace(go.Scatter(x=data['Date'], y=data['Open'], name="stock_open"))
-	fig.add_trace(go.Scatter(x=data['Date'], y=data['Close'], name="stock_close"))
-	fig.layout.update(title_text='Time Series data with Rangeslider', xaxis_rangeslider_visible=True)
-	st.plotly_chart(fig)
-	
-plot_raw_data()
-
-# Predict forecast with Prophet.
-df_train = data[['Date','Close']]
-df_train = df_train.rename(columns={"Date": "ds", "Close": "y"})
-
-m = Prophet()
-m.fit(df_train)
-future = m.make_future_dataframe(periods=period)
-forecast = m.predict(future)
-
-# Show and plot forecast
-st.subheader('Forecast data')
-st.write(forecast.tail())
-    
-st.write(f'Forecast plot for {n_years} years')
-fig1 = plot_plotly(m, forecast)
-st.plotly_chart(fig1)
-
-st.write("Forecast components")
-fig2 = m.plot_components(forecast)
-st.write(fig2)
+# Streamlit widgets automatically run the script from top to bottom. Since
+# this button is not connected to any other logic, it just causes a plain
+# rerun.
+st.button("Re-run")
